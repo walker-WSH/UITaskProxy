@@ -49,7 +49,7 @@ bool UITaskProxy::Initialize()
 	wc.lpszMenuName = NULL;
 	wc.lpszClassName = TASK_CLASS_NAME;
 
-	if (0 == RegisterClassA(&wc)) {
+	if (0 == RegisterClassA(&wc) && ERROR_CLASS_ALREADY_EXISTS != GetLastError()) {
 		assert(false);
 		return false;
 	}
