@@ -2,7 +2,9 @@
 //
 
 #include <iostream>
-#include <memory>
+#include <Windows.h>
+#include <process.h>
+
 #include "UITaskProxy.h"
 
 class CTest {
@@ -11,10 +13,7 @@ public:
 	~CTest() { printf("xi gou \n"); }
 };
 
-#include <Windows.h>
-#include <process.h>
-
-UITaskProxy pxy;
+static UITaskProxy pxy;
 
 static unsigned __stdcall ThreadFunc(void *pParam)
 {
