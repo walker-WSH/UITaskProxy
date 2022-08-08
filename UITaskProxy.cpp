@@ -37,6 +37,9 @@ UITaskProxy::~UITaskProxy()
 
 bool UITaskProxy::Initialize()
 {
+	if (::IsWindow(m_hWnd))
+		return true;
+
 	WNDCLASSA wc = {0};
 	wc.style = CS_VREDRAW | CS_HREDRAW;
 	wc.lpfnWndProc = (WNDPROC)&UITaskProxy::WindowMessageProcedure;
@@ -69,8 +72,10 @@ bool UITaskProxy::Initialize()
 
 void UITaskProxy::Uninitialize()
 {
-	SendMessage(m_hWnd, WM_CLOSE, 0, 0);
-	UnregisterClassA(TASK_CLASS_NAME, GetModuleHandle(NULL));
+	if (::IsWindow(m_hWnd)) {
+		SendMessage(m_hWnd, WM_CLOSE, 0, 0);
+		UnregisterClassA(TASK_CLASS_NAME, GetModuleHandle(NULL));
+	}
 
 	ClearTask();
 }
