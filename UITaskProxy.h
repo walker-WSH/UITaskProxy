@@ -30,6 +30,7 @@ private:
 		std::function<void()> func;
 	};
 
+	DWORD m_uThreadID = 0;
 	HWND m_hWnd = 0;
 	std::recursive_mutex m_lockList;
 	std::vector<ST_TaskInfo> m_TaskList;
