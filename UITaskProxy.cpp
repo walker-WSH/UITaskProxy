@@ -68,6 +68,11 @@ bool UITaskProxy::Initialize()
 	::SetWindowLongPtr(m_hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(this));
 
 	m_uThreadID = GetCurrentThreadId();
+
+	std::lock_guard<std::recursive_mutex> autoLock(m_lockList);
+	if (!m_TaskList.empty())
+		PostMessage(m_hWnd, TASK_RUN_MSG, 0, 0);
+
 	return true;
 }
 
@@ -83,8 +88,6 @@ void UITaskProxy::Uninitialize()
 
 void UITaskProxy::PushTask(uint64_t key, std::function<void()> func)
 {
-	assert(::IsWindow(m_hWnd));
-	
 	if (m_uThreadID == GetCurrentThreadId()) {
 		func();
 		return;
