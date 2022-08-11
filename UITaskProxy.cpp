@@ -69,8 +69,13 @@ bool UITaskProxy::Initialize()
 
 	m_uThreadID = GetCurrentThreadId();
 
-	std::lock_guard<std::recursive_mutex> autoLock(m_lockList);
-	if (!m_TaskList.empty())
+	bool bTaskEmpty = true;
+	{
+		std::lock_guard<std::recursive_mutex> autoLock(m_lockList);
+		bTaskEmpty = m_TaskList.empty();
+	}
+
+	if (!bTaskEmpty)
 		PostMessage(m_hWnd, TASK_RUN_MSG, 0, 0);
 
 	return true;
@@ -93,13 +98,14 @@ void UITaskProxy::PushTask(uint64_t key, std::function<void()> func)
 		return;
 	}
 
-	std::lock_guard<std::recursive_mutex> autoLock(m_lockList);
-
 	ST_TaskInfo info;
 	info.key = key;
 	info.func = func;
 
-	m_TaskList.push_back(info);
+	{
+		std::lock_guard<std::recursive_mutex> autoLock(m_lockList);
+		m_TaskList.push_back(info);
+	}
 
 	PostMessage(m_hWnd, TASK_RUN_MSG, 0, 0);
 }
@@ -126,10 +132,14 @@ void UITaskProxy::ClearTask()
 
 void UITaskProxy::RunTask()
 {
-	std::lock_guard<std::recursive_mutex> autoLock(m_lockList);
+	std::vector<ST_TaskInfo> tasks;
 
-	for (auto &item : m_TaskList)
+	{
+		std::lock_guard<std::recursive_mutex> autoLock(m_lockList);
+		tasks = m_TaskList;
+		m_TaskList.clear();
+	}
+
+	for (auto &item : tasks)
 		item.func();
-
-	m_TaskList.clear();
 }
