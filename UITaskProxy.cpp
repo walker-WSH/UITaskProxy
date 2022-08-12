@@ -136,8 +136,7 @@ void UITaskProxy::RunTask()
 
 	{
 		std::lock_guard<std::recursive_mutex> autoLock(m_lockList);
-		tasks = m_TaskList;
-		m_TaskList.clear();
+		tasks.swap(m_TaskList);
 	}
 
 	for (auto &item : tasks)
