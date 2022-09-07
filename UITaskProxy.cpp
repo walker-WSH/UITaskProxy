@@ -27,6 +27,14 @@ LRESULT UITaskProxy::WindowMessageProcedure(HWND hWnd, UINT nMsg, WPARAM wParam,
 	return DefWindowProcA(hWnd, nMsg, wParam, lParam);
 }
 
+UITaskProxy::UITaskInfo::UITaskInfo(HANDLE hEvent) : event(hEvent) {}
+
+UITaskProxy::UITaskInfo::~UITaskInfo()
+{
+	if (event)
+		SetEvent(event);
+};
+
 UITaskProxy::~UITaskProxy()
 {
 	if (::IsWindow(m_hWnd)) {
@@ -57,7 +65,7 @@ bool UITaskProxy::Initialize()
 		return false;
 	}
 
-	m_hWnd = CreateWindowA(TASK_CLASS_NAME, TASK_CLASS_NAME, WS_POPUPWINDOW, 0, 0, 0, 0, NULL, NULL, GetModuleHandle(NULL), NULL);
+	m_hWnd = CreateWindowA(TASK_CLASS_NAME, TASK_CLASS_NAME, WS_POPUPWINDOW | WS_EX_TOOLWINDOW, 0, 0, 0, 0, NULL, NULL, GetModuleHandle(NULL), NULL);
 	if (!::IsWindow(m_hWnd)) {
 		UnregisterClassA(TASK_CLASS_NAME, GetModuleHandle(NULL));
 		assert(false);
@@ -69,13 +77,8 @@ bool UITaskProxy::Initialize()
 
 	m_uThreadID = GetCurrentThreadId();
 
-	bool bTaskEmpty = true;
-	{
-		std::lock_guard<std::recursive_mutex> autoLock(m_lockList);
-		bTaskEmpty = m_TaskList.empty();
-	}
-
-	if (!bTaskEmpty)
+	std::lock_guard<std::recursive_mutex> autoLock(m_lockList);
+	if (!m_TaskList.empty())
 		PostMessage(m_hWnd, TASK_RUN_MSG, 0, 0);
 
 	return true;
@@ -83,40 +86,67 @@ bool UITaskProxy::Initialize()
 
 void UITaskProxy::Uninitialize()
 {
+	m_bStopped = true;
+
 	if (::IsWindow(m_hWnd)) {
 		SendMessage(m_hWnd, WM_CLOSE, 0, 0);
 		UnregisterClassA(TASK_CLASS_NAME, GetModuleHandle(NULL));
 	}
 
-	ClearTask();
+	RunTask();
 }
 
-void UITaskProxy::PushTask(uint64_t key, std::function<void()> func)
+void UITaskProxy::PushTask(uint64_t key, std::function<void()> func, bool waitDone)
 {
 	if (m_uThreadID == GetCurrentThreadId()) {
 		func();
 		return;
 	}
 
-	ST_TaskInfo info;
-	info.key = key;
-	info.func = func;
+	PushTaskInner(key, func, waitDone);
+}
+
+void UITaskProxy::PushAsyncTask(uint64_t key, std::function<void()> func)
+{
+	PushTaskInner(key, func, false);
+}
+
+void UITaskProxy::PushTaskInner(uint64_t key, std::function<void()> func, bool waitDone)
+{
+	if (m_bStopped) {
+		func();
+		assert(false);
+		return;
+	}
+
+	HANDLE evt = 0;
+	if (waitDone)
+		evt = CreateEvent(nullptr, TRUE, FALSE, nullptr);
+
+	auto task = std::make_shared<UITaskInfo>(evt);
+	task->key = key;
+	task->func = func;
 
 	{
 		std::lock_guard<std::recursive_mutex> autoLock(m_lockList);
-		m_TaskList.push_back(info);
+		m_TaskList.push_back(task);
 	}
 
 	PostMessage(m_hWnd, TASK_RUN_MSG, 0, 0);
+
+	if (evt) {
+		WaitForSingleObject(evt, INFINITE);
+		CloseHandle(evt);
+	}
 }
 
 void UITaskProxy::PopTask(uint64_t key)
 {
 	std::lock_guard<std::recursive_mutex> autoLock(m_lockList);
 
-	std::vector<ST_TaskInfo>::iterator itr = m_TaskList.begin();
+	auto itr = m_TaskList.begin();
 	while (itr != m_TaskList.end()) {
-		if (itr->key == key) {
+		if ((*itr)->key == key) {
 			itr = m_TaskList.erase(itr);
 			continue;
 		}
@@ -124,15 +154,9 @@ void UITaskProxy::PopTask(uint64_t key)
 	}
 }
 
-void UITaskProxy::ClearTask()
-{
-	std::lock_guard<std::recursive_mutex> autoLock(m_lockList);
-	m_TaskList.clear();
-}
-
 void UITaskProxy::RunTask()
 {
-	std::vector<ST_TaskInfo> tasks;
+	std::vector<std::shared_ptr<UITaskInfo>> tasks;
 
 	{
 		std::lock_guard<std::recursive_mutex> autoLock(m_lockList);
@@ -140,5 +164,5 @@ void UITaskProxy::RunTask()
 	}
 
 	for (auto &item : tasks)
-		item.func();
+		item->func();
 }
